@@ -1,67 +1,187 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Editor } from "@/components/Editor";
 import { RhymePanel } from "@/components/RhymePanel";
 import { MaskPanel } from "@/components/MaskPanel";
 import { AttributionBar } from "@/components/AttributionBar";
 import { BeatControls } from "@/components/BeatControls";
 import { SyllableDisplay } from "@/components/SyllableDisplay";
+import { SongSidebar } from "@/components/SongSidebar";
+import { Toolbar } from "@/components/Toolbar";
+import { useSongStore } from "@/lib/store";
 import { Chronicle } from "@/lib/chronicle";
 
 type PanelType = "rhymes" | "mask" | "syllables";
 
 export default function Home() {
-  const [chronicle] = useState(() => new Chronicle("song-1", "user-1", [""]));
-  const [content, setContent] = useState<string[]>(chronicle.getContent());
+  const {
+    songs,
+    currentSongId,
+    isLoading,
+    fetchSongs,
+    createSong,
+    updateContent,
+    updateTitle,
+    saveSong,
+    undo,
+    redo,
+    getChronicle,
+    getAttribution,
+  } = useSongStore();
+
   const [selectedWord, setSelectedWord] = useState<string>("");
   const [activePanel, setActivePanel] = useState<PanelType>("rhymes");
   const [bpm, setBpm] = useState(90);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [localChronicle, setLocalChronicle] = useState<Chronicle | null>(null);
+
+  // Fetch songs on mount
+  useEffect(() => {
+    fetchSongs();
+  }, [fetchSongs]);
+
+  // Create a new song if none exist after loading
+  useEffect(() => {
+    if (!isLoading && songs.size === 0) {
+      createSong("Untitled");
+    }
+  }, [isLoading, songs.size, createSong]);
+
+  // Get current song
+  const currentSong = currentSongId ? songs.get(currentSongId) : undefined;
+  const content = currentSong?.content || [""];
+
+  // Get or create chronicle for current song
+  useEffect(() => {
+    if (currentSongId) {
+      const chronicle = getChronicle(currentSongId);
+      if (chronicle) {
+        setLocalChronicle(chronicle);
+      } else {
+        setLocalChronicle(new Chronicle(currentSongId, "user-1", content));
+      }
+    }
+  }, [currentSongId, getChronicle]);
 
   const handleContentChange = useCallback(
     (newContent: string[]) => {
-      setContent(newContent);
+      if (currentSongId) {
+        updateContent(currentSongId, newContent);
+      }
     },
-    []
+    [currentSongId, updateContent]
   );
 
   const handleWordSelect = useCallback((word: string) => {
     setSelectedWord(word);
-    // Auto-switch to rhymes panel when word selected
     setActivePanel("rhymes");
   }, []);
 
   const handleMaskInsert = useCallback(
     (text: string, maskId: string) => {
-      // Insert at end of current content
+      if (!currentSongId || !localChronicle) return;
+
       const lastLine = content.length - 1;
       const lastChar = content[lastLine]?.length || 0;
 
-      chronicle.insertFromMask(
+      localChronicle.insertFromMask(
         { line: lastLine, character: lastChar },
         (lastChar > 0 ? "\n" : "") + text,
         maskId,
         0.85
       );
 
-      setContent(chronicle.getContent());
+      const newContent = localChronicle.getContent();
+      updateContent(currentSongId, newContent);
     },
-    [chronicle, content]
+    [currentSongId, localChronicle, content, updateContent]
   );
 
-  const attribution = chronicle.getAttribution();
+  const handleUndo = useCallback(() => {
+    if (currentSongId) {
+      const previousContent = undo(currentSongId);
+      if (previousContent && localChronicle) {
+        // Sync chronicle
+      }
+    }
+  }, [currentSongId, undo, localChronicle]);
+
+  const handleRedo = useCallback(() => {
+    if (currentSongId) {
+      const nextContent = redo(currentSongId);
+      if (nextContent && localChronicle) {
+        // Sync chronicle
+      }
+    }
+  }, [currentSongId, redo, localChronicle]);
+
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (currentSongId) {
+        updateTitle(currentSongId, e.target.value);
+      }
+    },
+    [currentSongId, updateTitle]
+  );
+
+  const handleTitleBlur = useCallback(() => {
+    if (currentSongId) {
+      saveSong(currentSongId);
+    }
+  }, [currentSongId, saveSong]);
+
+  // Auto-save on content change (debounced)
+  useEffect(() => {
+    if (!currentSongId) return;
+
+    const timer = setTimeout(() => {
+      saveSong(currentSongId);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [content, currentSongId, saveSong]);
+
+  const attribution = currentSongId ? getAttribution(currentSongId) : undefined;
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-ghost-muted">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
-      <header className="border-b border-ghost-border px-6 py-3">
+      <header className="border-b border-ghost-border px-4 py-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold tracking-tight">
+          <div className="flex items-center gap-3">
+            <Toolbar
+              songId={currentSongId}
+              onUndo={handleUndo}
+              onRedo={handleRedo}
+              onOpenSidebar={() => setSidebarOpen(true)}
+            />
+
+            <div className="w-px h-6 bg-ghost-border" />
+
+            <h1 className="text-lg font-bold tracking-tight">
               <span className="text-ghost-muted">Ghost</span>
               <span className="text-ghost-ink">Ink</span>
             </h1>
-            <span className="text-ghost-muted text-sm">/ Untitled Song</span>
+
+            <span className="text-ghost-muted">/</span>
+
+            <input
+              type="text"
+              value={currentSong?.title || ""}
+              onChange={handleTitleChange}
+              onBlur={handleTitleBlur}
+              placeholder="Song title..."
+              className="bg-transparent border-none outline-none text-ghost-text text-sm font-medium focus:bg-ghost-surface px-2 py-1 rounded -ml-2"
+            />
           </div>
 
           {/* Panel tabs */}
@@ -102,24 +222,23 @@ export default function Home() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 flex">
+      <main className="flex-1 flex overflow-hidden">
         {/* Left side: Editor + Beat controls */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col min-w-0">
           {/* Beat controls toolbar */}
           <div className="border-b border-ghost-border p-3">
-            <BeatControls
-              initialBpm={bpm}
-              onBpmChange={setBpm}
-            />
+            <BeatControls initialBpm={bpm} onBpmChange={setBpm} />
           </div>
 
           {/* Editor */}
-          <Editor
-            content={content}
-            onChange={handleContentChange}
-            onWordSelect={handleWordSelect}
-            chronicle={chronicle}
-          />
+          {localChronicle && (
+            <Editor
+              content={content}
+              onChange={handleContentChange}
+              onWordSelect={handleWordSelect}
+              chronicle={localChronicle}
+            />
+          )}
 
           {/* Attribution footer */}
           <div className="border-t border-ghost-border px-6 py-3">
@@ -128,23 +247,29 @@ export default function Home() {
                 Attribution
               </span>
               <div className="flex-1 max-w-xs">
-                <AttributionBar attribution={attribution} />
+                <AttributionBar
+                  attribution={
+                    attribution || {
+                      songId: "",
+                      totalCharacters: 0,
+                      humanCharacters: 0,
+                      maskContributions: [],
+                      humanPercentage: 100,
+                    }
+                  }
+                />
               </div>
               <span className="text-xs text-ghost-muted">
-                {attribution.humanPercentage.toFixed(0)}% you
+                {(attribution?.humanPercentage ?? 100).toFixed(0)}% you
               </span>
             </div>
           </div>
         </div>
 
         {/* Right panel */}
-        <aside className="w-80 border-l border-ghost-border flex flex-col">
-          {activePanel === "rhymes" && (
-            <RhymePanel selectedWord={selectedWord} />
-          )}
-          {activePanel === "syllables" && (
-            <SyllableDisplay lines={content} bpm={bpm} />
-          )}
+        <aside className="w-80 border-l border-ghost-border flex flex-col flex-shrink-0">
+          {activePanel === "rhymes" && <RhymePanel selectedWord={selectedWord} />}
+          {activePanel === "syllables" && <SyllableDisplay lines={content} bpm={bpm} />}
           {activePanel === "mask" && (
             <MaskPanel
               onInsert={handleMaskInsert}
@@ -156,6 +281,9 @@ export default function Home() {
           )}
         </aside>
       </main>
+
+      {/* Song sidebar */}
+      <SongSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
     </div>
   );
 }

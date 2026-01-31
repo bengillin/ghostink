@@ -161,37 +161,50 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
     setCursorLine(lineIndex);
   }, []);
 
-  // Get rhyme scheme color
-  const getSchemeColor = (scheme: string) => {
-    const colors: Record<string, string> = {
-      A: "text-red-400",
-      B: "text-blue-400",
-      C: "text-green-400",
-      D: "text-orange-400",
-      E: "text-purple-400",
-      F: "text-pink-400",
-      G: "text-yellow-400",
-      H: "text-cyan-400",
-    };
-    return colors[scheme] || "text-ghost-muted";
+  // Rhyme scheme colors (text and background)
+  const RHYME_COLORS: Record<string, { text: string; bg: string; border: string }> = {
+    A: { text: "text-red-400", bg: "bg-red-500/10", border: "border-l-red-500" },
+    B: { text: "text-blue-400", bg: "bg-blue-500/10", border: "border-l-blue-500" },
+    C: { text: "text-green-400", bg: "bg-green-500/10", border: "border-l-green-500" },
+    D: { text: "text-orange-400", bg: "bg-orange-500/10", border: "border-l-orange-500" },
+    E: { text: "text-purple-400", bg: "bg-purple-500/10", border: "border-l-purple-500" },
+    F: { text: "text-pink-400", bg: "bg-pink-500/10", border: "border-l-pink-500" },
+    G: { text: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-l-yellow-500" },
+    H: { text: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-l-cyan-500" },
+  };
+
+  const getSchemeColors = (scheme: string) => {
+    return RHYME_COLORS[scheme] || { text: "text-ghost-muted", bg: "", border: "" };
+  };
+
+  // Get the last word of a line for display
+  const getLastWord = (line: string) => {
+    const words = line.trim().split(/\s+/);
+    return words[words.length - 1] || "";
   };
 
   return (
     <div className="flex-1 p-6 overflow-auto">
       <div className="max-w-3xl mx-auto">
-        {content.map((line, index) => (
+        {content.map((line, index) => {
+          const scheme = rhymeScheme[index];
+          const hasRhyme = scheme && scheme !== "-" && scheme !== "?";
+          const colors = hasRhyme ? getSchemeColors(scheme) : null;
+          const lastWord = hasRhyme ? getLastWord(line) : "";
+
+          return (
           <div
             key={index}
-            className={`flex items-start gap-4 group ${
+            className={`flex items-start gap-2 group rounded-r ${
               cursorLine === index ? "bg-ghost-surface/50" : ""
-            } rounded px-2 -mx-2`}
+            } ${colors?.bg || ""} ${hasRhyme ? `border-l-2 ${colors?.border}` : "border-l-2 border-l-transparent"} pl-2 -ml-2`}
           >
-            {/* Line number */}
-            <div className="editor-line-number pt-2 flex items-center gap-2 select-none">
-              <span>{index + 1}</span>
-              {rhymeScheme[index] && rhymeScheme[index] !== "-" && rhymeScheme[index] !== "?" && (
-                <span className={`text-xs font-bold ${getSchemeColor(rhymeScheme[index])}`}>
-                  {rhymeScheme[index]}
+            {/* Line number and rhyme indicator */}
+            <div className="editor-line-number pt-2 flex items-center gap-1.5 select-none min-w-[52px]">
+              <span className="w-5 text-right">{index + 1}</span>
+              {hasRhyme && (
+                <span className={`text-xs font-bold w-4 ${colors?.text}`}>
+                  {scheme}
                 </span>
               )}
             </div>
@@ -221,8 +234,16 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
                 target.style.height = target.scrollHeight + 'px';
               }}
             />
+
+            {/* Rhyme word indicator */}
+            {hasRhyme && lastWord && (
+              <div className={`pt-2 text-xs ${colors?.text} opacity-60 select-none hidden sm:block`}>
+                {lastWord}
+              </div>
+            )}
           </div>
-        ))}
+        );
+        })}
 
         {/* Add line button */}
         <button

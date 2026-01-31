@@ -40,3 +40,7 @@ embeddings/
 # Data (lyrics, etc - don't commit copyrighted material)
 data/lyrics/
 data/raw/
+*.db
+*.db-shm
+*.db-wal
+tsconfig.tsbuildinfo
