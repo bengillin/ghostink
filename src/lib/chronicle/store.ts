@@ -15,7 +15,9 @@ import type {
   Range,
   Author,
   Attribution,
+  Contributor,
 } from './types';
+import { MASK_REGISTRY } from '@/lib/masks/types';
 
 /**
  * Apply an event to document lines
@@ -293,8 +295,8 @@ export class Chronicle {
    */
   getAttribution(): Attribution {
     const charCount = {
-      human: 0,
-      masks: new Map<string, number>(),
+      humans: new Map<string, number>(), // userId -> characters
+      masks: new Map<string, number>(),   // maskId -> characters
     };
 
     // Track net characters added by each author
@@ -310,41 +312,97 @@ export class Chronicle {
       }
 
       if (event.author.type === 'human') {
-        charCount.human += chars;
+        const current = charCount.humans.get(event.author.userId) || 0;
+        charCount.humans.set(event.author.userId, current + chars);
       } else {
         const current = charCount.masks.get(event.author.maskId) || 0;
         charCount.masks.set(event.author.maskId, current + chars);
       }
     }
 
-    // Calculate totals (use absolute values for deleted content)
-    const humanChars = Math.max(0, charCount.human);
-    const maskContributions = Array.from(charCount.masks.entries())
-      .map(([maskId, chars]) => ({
-        maskId,
-        characters: Math.max(0, chars),
-        percentage: 0, // Will calculate below
-      }));
+    // Build contributors array
+    const contributors: Contributor[] = [];
 
-    const totalChars = humanChars + maskContributions.reduce(
-      (sum, m) => sum + m.characters,
-      0
-    );
+    // Add human contributors
+    for (const [userId, chars] of charCount.humans.entries()) {
+      const characters = Math.max(0, chars);
+      if (characters > 0) {
+        contributors.push({
+          id: userId,
+          type: 'human',
+          name: 'You', // In the future, could look up user names
+          color: '#34d399', // ghost-human color
+          characters,
+          percentage: 0, // Will calculate below
+        });
+      }
+    }
+
+    // Add mask contributors
+    for (const [maskId, chars] of charCount.masks.entries()) {
+      const characters = Math.max(0, chars);
+      if (characters > 0) {
+        const maskInfo = MASK_REGISTRY[maskId];
+        contributors.push({
+          id: maskId,
+          type: 'mask',
+          name: maskInfo?.mask.name || maskId,
+          color: maskInfo?.mask.color || '#a78bfa', // fallback to ghost-mask color
+          characters,
+          percentage: 0, // Will calculate below
+        });
+      }
+    }
+
+    // Calculate totals
+    const totalChars = contributors.reduce((sum, c) => sum + c.characters, 0);
 
     // Calculate percentages
-    const humanPercentage = totalChars > 0 ? (humanChars / totalChars) * 100 : 100;
-    for (const contribution of maskContributions) {
-      contribution.percentage = totalChars > 0
-        ? (contribution.characters / totalChars) * 100
+    for (const contributor of contributors) {
+      contributor.percentage = totalChars > 0
+        ? (contributor.characters / totalChars) * 100
         : 0;
+    }
+
+    // Sort: humans first, then masks by contribution size
+    contributors.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'human' ? -1 : 1;
+      return b.characters - a.characters;
+    });
+
+    // Calculate backward-compatible fields
+    const humanChars = contributors
+      .filter(c => c.type === 'human')
+      .reduce((sum, c) => sum + c.characters, 0);
+    const humanPercentage = totalChars > 0 ? (humanChars / totalChars) * 100 : 100;
+
+    const maskContributions = contributors
+      .filter(c => c.type === 'mask')
+      .map(c => ({
+        maskId: c.id,
+        characters: c.characters,
+        percentage: c.percentage,
+      }));
+
+    // If no contributors yet, show 100% human
+    if (contributors.length === 0) {
+      contributors.push({
+        id: this.userId,
+        type: 'human',
+        name: 'You',
+        color: '#34d399',
+        characters: 0,
+        percentage: 100,
+      });
     }
 
     return {
       songId: this.state.songId,
       totalCharacters: totalChars,
+      contributors,
       humanCharacters: humanChars,
-      maskContributions,
       humanPercentage,
+      maskContributions,
     };
   }
 

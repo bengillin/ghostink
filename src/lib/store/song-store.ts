@@ -56,47 +56,68 @@ const undoStacks = new Map<string, string[][]>();
 const redoStacks = new Map<string, string[][]>();
 const MAX_UNDO = 100;
 
+// Track if initial fetch has been done
+let hasFetched = false;
+
 export const useSongStore = create<SongState>((set, get) => ({
   currentSongId: null,
   songs: new Map(),
   chronicles: new Map(),
-  isLoading: false,
+  isLoading: true,  // Start as loading to prevent flash
   isSaving: false,
   lastSaved: null,
 
   createSong: (title = 'Untitled') => {
-    const id = nanoid();
-    const now = Date.now();
-    const song: Song = {
-      id,
-      title,
-      content: [''],
-      createdAt: now,
-      updatedAt: now,
-    };
+    // Set loading to prevent duplicate creation
+    set({ isLoading: true });
 
-    const chronicle = new Chronicle(id, 'user-1', ['']);
+    // Create song on server first, then sync locally
+    fetch('/api/songs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.song) {
+          const { id, title: songTitle, created_at, updated_at } = data.song;
+          const content = [''];
 
-    set((state) => {
-      const newSongs = new Map(state.songs);
-      newSongs.set(id, song);
-      const newChronicles = new Map(state.chronicles);
-      newChronicles.set(id, chronicle);
-      return {
-        songs: newSongs,
-        chronicles: newChronicles,
-        currentSongId: id,
-      };
-    });
+          const song: Song = {
+            id,
+            title: songTitle,
+            content,
+            createdAt: created_at,
+            updatedAt: updated_at,
+          };
 
-    // Initialize undo stack
-    undoStacks.set(id, []);
-    redoStacks.set(id, []);
+          const chronicle = new Chronicle(id, 'user-1', content);
 
-    // Save to backend
-    get().saveSong(id);
+          set((state) => {
+            const newSongs = new Map(state.songs);
+            newSongs.set(id, song);
+            const newChronicles = new Map(state.chronicles);
+            newChronicles.set(id, chronicle);
+            return {
+              songs: newSongs,
+              chronicles: newChronicles,
+              currentSongId: id,
+              isLoading: false,
+            };
+          });
 
-    return id;
+          // Initialize undo stack
+          undoStacks.set(id, []);
+          redoStacks.set(id, []);
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to create song:', error);
+        set({ isLoading: false });
+      });
+
+    // Return empty string for now (async creation)
+    return '';
   },
 
   loadSong: (id: string) => {
@@ -270,6 +291,10 @@ export const useSongStore = create<SongState>((set, get) => ({
   },
 
   fetchSongs: async () => {
+    // Prevent duplicate fetches
+    if (hasFetched) return;
+    hasFetched = true;
+
     set({ isLoading: true });
 
     try {

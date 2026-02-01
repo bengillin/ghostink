@@ -95,17 +95,29 @@ export interface Session {
   endedAt?: number;
 }
 
+// Individual contributor in attribution
+export interface Contributor {
+  id: string;
+  type: 'human' | 'mask';
+  name: string;           // Display name
+  color: string;          // Color for UI
+  characters: number;
+  percentage: number;
+}
+
 // Attribution statistics
 export interface Attribution {
   songId: string;
   totalCharacters: number;
+  contributors: Contributor[];
+  // Convenience accessors for backward compatibility
   humanCharacters: number;
+  humanPercentage: number;
   maskContributions: {
     maskId: string;
     characters: number;
     percentage: number;
   }[];
-  humanPercentage: number;
 }
 
 // Snapshot for faster reconstruction

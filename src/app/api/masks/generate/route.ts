@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateFromClaudeMask, isClaudeAvailable } from '@/lib/masks/claude-service';
-import { generateFromMask } from '@/lib/masks/service';
+import { generateFromMask, getAvailableMasks } from '@/lib/masks/service';
 import type { MaskRequest } from '@/lib/masks/types';
 
 export async function POST(request: NextRequest) {
@@ -53,14 +53,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   // Return info about available masks and API status
+  const masks = getAvailableMasks();
   return NextResponse.json({
     claudeAvailable: isClaudeAvailable(),
-    masks: [
-      {
-        id: 'doom',
-        name: 'DOOM',
-        status: 'active',
-      },
-    ],
+    masks: masks.map(m => ({
+      id: m.id,
+      name: m.name,
+      status: m.status,
+      color: m.color,
+      description: m.description,
+    })),
   });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, KeyboardEvent, useEffect, ChangeEvent } from "react";
+import { useState, useRef, useCallback, KeyboardEvent, useEffect, ChangeEvent, forwardRef, useImperativeHandle } from "react";
 import { Chronicle } from "@/lib/chronicle";
 import { analyzeRhymeScheme } from "@/lib/rhyme";
 
@@ -8,19 +8,62 @@ interface EditorProps {
   content: string[];
   onChange: (content: string[]) => void;
   onWordSelect: (word: string) => void;
+  onInlineCommand?: (command: string) => boolean;
   chronicle: Chronicle;
+  isGenerating?: boolean;
 }
 
-export function Editor({ content, onChange, onWordSelect, chronicle }: EditorProps) {
+export interface EditorHandle {
+  focus: () => void;
+  insertText: (text: string) => void;
+}
+
+export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
+  { content, onChange, onWordSelect, onInlineCommand, chronicle, isGenerating },
+  ref
+) {
   const [cursorLine, setCursorLine] = useState(0);
   const [rhymeScheme, setRhymeScheme] = useState<string[]>([]);
   const inputRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
+
+  // Expose methods via ref
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      const lastIndex = content.length - 1;
+      inputRefs.current[lastIndex]?.focus();
+    },
+    insertText: (text: string) => {
+      const lastIndex = content.length - 1;
+      const newContent = [...content];
+      newContent[lastIndex] = (newContent[lastIndex] || "") + text;
+      onChange(newContent);
+    },
+  }), [content, onChange]);
 
   // Analyze rhyme scheme when content changes
   useEffect(() => {
     const scheme = analyzeRhymeScheme(content);
     setRhymeScheme(scheme);
   }, [content]);
+
+  // Check if current line is an inline command
+  const checkInlineCommand = useCallback((lineIndex: number): boolean => {
+    if (!onInlineCommand) return false;
+
+    const line = content[lineIndex]?.trim() || "";
+    if (line.startsWith('/') && line.length > 1 && line.length < 15) {
+      // It's a potential command
+      const handled = onInlineCommand(line);
+      if (handled) {
+        // Clear the command line
+        const newContent = [...content];
+        newContent[lineIndex] = "";
+        onChange(newContent);
+        return true;
+      }
+    }
+    return false;
+  }, [content, onChange, onInlineCommand]);
 
   const handleChange = useCallback(
     (lineIndex: number, e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -65,6 +108,16 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
     (e: KeyboardEvent<HTMLTextAreaElement>, lineIndex: number) => {
       const target = e.currentTarget;
       const cursorPos = target.selectionStart;
+      const lineText = content[lineIndex] || "";
+
+      // Check for inline command on Tab or Enter at end of command
+      if ((e.key === "Tab" || e.key === "Enter") && lineText.startsWith('/')) {
+        const handled = checkInlineCommand(lineIndex);
+        if (handled) {
+          e.preventDefault();
+          return;
+        }
+      }
 
       if (e.key === "Enter") {
         e.preventDefault();
@@ -126,7 +179,7 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
         }
       }
     },
-    [content, onChange]
+    [content, onChange, checkInlineCommand]
   );
 
   const handleSelect = useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
@@ -183,14 +236,21 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
     return words[words.length - 1] || "";
   };
 
+  // Check if a line looks like a command
+  const isCommandLine = (line: string) => {
+    const trimmed = line.trim();
+    return trimmed.startsWith('/') && trimmed.length > 1 && trimmed.length < 15;
+  };
+
   return (
-    <div className="flex-1 p-6 overflow-auto">
+    <div className={`flex-1 p-6 overflow-auto ${isGenerating ? 'opacity-75' : ''}`}>
       <div className="max-w-3xl mx-auto">
         {content.map((line, index) => {
           const scheme = rhymeScheme[index];
           const hasRhyme = scheme && scheme !== "-" && scheme !== "?";
           const colors = hasRhyme ? getSchemeColors(scheme) : null;
           const lastWord = hasRhyme ? getLastWord(line) : "";
+          const isCommand = isCommandLine(line);
 
           return (
           <div
@@ -220,9 +280,12 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
               onSelect={handleSelect}
               onFocus={() => handleFocus(index)}
               onDoubleClick={handleDoubleClick}
-              placeholder={index === 0 && !line ? "Start writing..." : ""}
+              placeholder={index === 0 && !line ? "Start writing... (try /complete or ⌘J)" : ""}
               rows={1}
-              className="editor-line flex-1 bg-transparent outline-none resize-none min-h-[28px] placeholder:text-ghost-muted/50"
+              disabled={isGenerating}
+              className={`editor-line flex-1 bg-transparent outline-none resize-none min-h-[28px] placeholder:text-ghost-muted/50 ${
+                isCommand ? 'text-ghost-accent font-mono text-sm' : ''
+              }`}
               style={{
                 height: 'auto',
                 overflow: 'hidden',
@@ -235,8 +298,15 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
               }}
             />
 
+            {/* Command hint */}
+            {isCommand && (
+              <div className="pt-2 text-xs text-ghost-accent opacity-60 select-none">
+                Tab ↹
+              </div>
+            )}
+
             {/* Rhyme word indicator */}
-            {hasRhyme && lastWord && (
+            {hasRhyme && lastWord && !isCommand && (
               <div className={`pt-2 text-xs ${colors?.text} opacity-60 select-none hidden sm:block`}>
                 {lastWord}
               </div>
@@ -254,11 +324,12 @@ export function Editor({ content, onChange, onWordSelect, chronicle }: EditorPro
               inputRefs.current[newContent.length - 1]?.focus();
             }, 0);
           }}
-          className="mt-4 text-ghost-muted hover:text-ghost-text text-sm opacity-50 hover:opacity-100 transition-opacity"
+          disabled={isGenerating}
+          className="mt-4 text-ghost-muted hover:text-ghost-text text-sm opacity-50 hover:opacity-100 transition-opacity disabled:opacity-25"
         >
           + Add line
         </button>
       </div>
     </div>
   );
-}
+});

@@ -134,6 +134,21 @@ function initializeSchema(db: Database.Database): void {
       'active'
     );
   }
+
+  // Insert Kendrick mask if not exists
+  const kendrickExists = db.prepare('SELECT id FROM masks WHERE id = ?').get('kendrick');
+  if (!kendrickExists) {
+    db.prepare(`
+      INSERT INTO masks (id, name, artist_name, description, status)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      'kendrick',
+      'K.Dot',
+      'Kendrick Lamar',
+      'The storyteller. Dense internal rhymes, social commentary, Compton roots.',
+      'active'
+    );
+  }
 }
 
 /**

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { findRhymes, type RhymeResult, type RhymeType } from "@/lib/rhyme";
+import { useState, useEffect, useCallback } from "react";
+import type { RhymeResult, RhymeType } from "@/lib/rhyme";
 
 interface RhymePanelProps {
   selectedWord: string;
@@ -33,16 +33,19 @@ export function RhymePanel({ selectedWord }: RhymePanelProps) {
   const [results, setResults] = useState<RhymeResult | null>(null);
   const [activeTab, setActiveTab] = useState<RhymeType>("perfect");
   const [searchInput, setSearchInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (selectedWord) {
-      setSearchInput(selectedWord);
-      const result = findRhymes({
-        word: selectedWord,
-        types: ["perfect", "slant", "assonance", "consonance", "multisyllabic"],
-        minScore: 0.4,
-        limit: 15,
-      });
+  // Fetch rhymes from API (uses full CMU dictionary on server)
+  const fetchRhymes = useCallback(async (word: string) => {
+    const cleanWord = word.trim().toLowerCase().replace(/[^a-z]/g, "");
+    if (!cleanWord) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/rhymes?word=${encodeURIComponent(cleanWord)}&limit=20`);
+      if (!response.ok) throw new Error("Failed to fetch rhymes");
+
+      const result: RhymeResult = await response.json();
       setResults(result);
 
       // Auto-select first tab with results
@@ -52,20 +55,28 @@ export function RhymePanel({ selectedWord }: RhymePanelProps) {
         setActiveTab("slant");
       } else if (result.matches.multisyllabic?.length) {
         setActiveTab("multisyllabic");
+      } else if (result.matches.assonance?.length) {
+        setActiveTab("assonance");
+      } else if (result.matches.consonance?.length) {
+        setActiveTab("consonance");
       }
+    } catch (err) {
+      console.error("Failed to fetch rhymes:", err);
+    } finally {
+      setIsLoading(false);
     }
-  }, [selectedWord]);
+  }, []);
+
+  useEffect(() => {
+    if (selectedWord) {
+      setSearchInput(selectedWord);
+      fetchRhymes(selectedWord);
+    }
+  }, [selectedWord, fetchRhymes]);
 
   const handleSearch = () => {
     if (searchInput.trim()) {
-      const word = searchInput.trim().toLowerCase().replace(/[^a-z]/g, "");
-      const result = findRhymes({
-        word,
-        types: ["perfect", "slant", "assonance", "consonance", "multisyllabic"],
-        minScore: 0.4,
-        limit: 15,
-      });
-      setResults(result);
+      fetchRhymes(searchInput);
     }
   };
 
@@ -120,20 +131,27 @@ export function RhymePanel({ selectedWord }: RhymePanelProps) {
 
       {/* Results */}
       <div className="flex-1 overflow-auto p-4">
-        {!results && (
+        {isLoading && (
+          <div className="text-center text-ghost-muted py-8">
+            <LoadingSpinner className="w-5 h-5 mx-auto mb-2" />
+            <p className="text-sm">Finding rhymes...</p>
+          </div>
+        )}
+
+        {!isLoading && !results && (
           <div className="text-center text-ghost-muted py-8">
             <p className="text-sm">Select a word or search to find rhymes</p>
           </div>
         )}
 
-        {results && availableTabs.length === 0 && (
+        {!isLoading && results && availableTabs.length === 0 && (
           <div className="text-center text-ghost-muted py-8">
             <p className="text-sm">No rhymes found for "{results.query}"</p>
             <p className="text-xs mt-2">Try a different word</p>
           </div>
         )}
 
-        {results && results.matches[activeTab] && (
+        {!isLoading && results && results.matches[activeTab] && (
           <div className="space-y-1 animate-fade-in">
             <p className="text-xs text-ghost-muted mb-3">
               {TYPE_DESCRIPTIONS[activeTab]}
@@ -216,6 +234,26 @@ function CopyIcon({ className }: { className?: string }) {
     >
       <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
       <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </svg>
+  );
+}
+
+function LoadingSpinner({ className }: { className?: string }) {
+  return (
+    <svg className={`${className} animate-spin`} viewBox="0 0 24 24" fill="none">
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
     </svg>
   );
 }

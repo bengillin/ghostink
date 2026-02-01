@@ -13,12 +13,13 @@ import type {
   MaskSuggestion,
   MaskMode,
 } from './types';
-import { DOOM_MASK, DOOM_STYLE_GUIDE } from './types';
+import { DOOM_MASK, KENDRICK_MASK, MASK_REGISTRY } from './types';
 import { getAllRhymes } from '../rhyme';
 
 // Registry of available masks
 const masks: Map<string, Mask> = new Map([
   [DOOM_MASK.id, DOOM_MASK],
+  [KENDRICK_MASK.id, KENDRICK_MASK],
 ]);
 
 /**

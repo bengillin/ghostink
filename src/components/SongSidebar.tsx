@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSongStore, type Song } from "@/lib/store";
 
 interface SongSidebarProps {
@@ -13,7 +13,6 @@ export function SongSidebar({ isOpen, onClose }: SongSidebarProps) {
     songs,
     currentSongId,
     isLoading,
-    fetchSongs,
     createSong,
     loadSong,
     deleteSong,
@@ -23,14 +22,9 @@ export function SongSidebar({ isOpen, onClose }: SongSidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
 
-  // Fetch songs on mount
-  useEffect(() => {
-    fetchSongs();
-  }, [fetchSongs]);
-
   const handleCreate = () => {
-    const id = createSong("Untitled");
-    loadSong(id);
+    createSong("Untitled");
+    // Song will be loaded automatically when created
   };
 
   const handleSelect = (id: string) => {

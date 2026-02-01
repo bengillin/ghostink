@@ -122,3 +122,58 @@ export const DOOM_STYLE_GUIDE: MaskConfig['styleGuide'] = {
   ],
   flowNotes: 'Off-beat, conversational. Unexpected pauses. Sometimes runs past the bar line. Feels improvised but precisely constructed.',
 };
+
+// The Kendrick Mask
+export const KENDRICK_MASK: Mask = {
+  id: 'kendrick',
+  name: 'K.Dot',
+  artistName: 'Kendrick Lamar',
+  aliases: [
+    'K.Dot',
+    'Kung Fu Kenny',
+    'Cornrow Kenny',
+    'Kendrick Lamar Duckworth',
+  ],
+  description: 'The storyteller. Dense internal rhymes, social commentary, Compton roots.',
+  color: '#dc2626', // Red
+  status: 'active',
+};
+
+// Style guide for Kendrick
+export const KENDRICK_STYLE_GUIDE: MaskConfig['styleGuide'] = {
+  vocabulary: [
+    'Compton', 'hustle', 'humble', 'DNA', 'loyalty', 'blood',
+    'streets', 'blessings', 'sins', 'mortal', 'faith', 'fear',
+    'levels', 'real', 'authentic', 'pain', 'power', 'spirit',
+    'ancestors', 'legacy', 'pressure', 'truth', 'lies',
+  ],
+  avoidWords: [
+    'villain', 'mask', // DOOM territory
+    'vibes', 'no cap', 'mid', // Too internet
+  ],
+  themes: [
+    'Compton/West Coast identity',
+    'systemic racism and social justice',
+    'survivor guilt and success',
+    'spirituality and morality',
+    'duality and inner conflict',
+    'generational trauma',
+    'Black excellence and struggle',
+    'personal accountability',
+    'street narratives',
+  ],
+  rhymePatterns: [
+    'dense internal rhyme schemes',
+    'multi-syllabic stacking',
+    'rhyming across multiple bars',
+    'perfect rhymes for emphasis',
+    'rhythmic repetition for effect',
+  ],
+  flowNotes: 'Highly varied - can switch from laid-back to double-time within verses. Uses vocal inflection and pitch changes for emphasis. Rhythmically precise. Often builds intensity toward the end of verses. Conversational moments punctuated by technical bursts.',
+};
+
+// Registry of all masks for easy lookup
+export const MASK_REGISTRY: Record<string, { mask: Mask; styleGuide: MaskConfig['styleGuide'] }> = {
+  doom: { mask: DOOM_MASK, styleGuide: DOOM_STYLE_GUIDE },
+  kendrick: { mask: KENDRICK_MASK, styleGuide: KENDRICK_STYLE_GUIDE },
+};

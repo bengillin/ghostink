@@ -187,8 +187,8 @@ textarea.editor-line {
 
 /* Attribution bar */
 .attribution-bar {
-  height: 4px;
-  border-radius: 2px;
+  height: 6px;
+  border-radius: 3px;
   background: var(--ghost-border);
   overflow: hidden;
 }
@@ -201,6 +201,15 @@ textarea.editor-line {
 .attribution-mask {
   background: var(--ghost-mask);
   height: 100%;
+}
+
+/* Contributor colors as utility classes */
+.bg-ghost-human {
+  background-color: var(--ghost-human);
+}
+
+.bg-ghost-mask {
+  background-color: var(--ghost-mask);
 }
 
 /* Tooltip */
@@ -252,4 +261,26 @@ textarea.editor-line {
 
 .animate-slide-up {
   animation: slideUp 0.3s ease;
+}
+
+/* Keyboard shortcut hints */
+.kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  background: var(--ghost-bg);
+  border: 1px solid var(--ghost-border);
+  border-radius: 4px;
+  color: var(--ghost-muted);
+  box-shadow: 0 1px 0 var(--ghost-border);
+}
+
+/* Code inline */
+code {
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  background: var(--ghost-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
 }
