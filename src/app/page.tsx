@@ -41,10 +41,11 @@ export default function Home() {
   const [localChronicle, setLocalChronicle] = useState<Chronicle | null>(null);
   const [selectedMask, setSelectedMask] = useState<Mask>(DOOM_MASK);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatingAtLine, setGeneratingAtLine] = useState<number | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const hasFetchedRef = useRef(false);
   const hasCreatedRef = useRef(false);
-  const editorRef = useRef<{ focus: () => void; insertText: (text: string) => void } | null>(null);
+  const editorRef = useRef<{ focus: () => void; insertText: (text: string) => void; getCursorLine: () => number } | null>(null);
 
   // Fetch songs on mount (only once)
   useEffect(() => {
@@ -86,11 +87,14 @@ export default function Home() {
   }, []);
 
   // Generate from mask and auto-insert
-  const generateAndInsert = useCallback(async (mode: MaskMode) => {
+  const generateAndInsert = useCallback(async (mode: MaskMode, fromSlashCommand = false) => {
     if (isGenerating || !currentSongId) return;
 
+    // Get current cursor line for inline indicator
+    const cursorLine = editorRef.current?.getCursorLine() ?? content.length - 1;
+
     setIsGenerating(true);
-    showNotification(`${selectedMask.name} is writing...`);
+    setGeneratingAtLine(cursorLine);
 
     try {
       const response = await fetch("/api/masks/generate", {
@@ -100,8 +104,8 @@ export default function Home() {
           maskId: selectedMask.id,
           mode,
           context: {
-            currentLine: content[content.length - 1] || "",
-            previousLines: content.slice(0, -1),
+            currentLine: content[cursorLine] || "",
+            previousLines: content.slice(0, cursorLine),
           },
           options: { numSuggestions: 1 },
         }),
@@ -113,20 +117,20 @@ export default function Home() {
       const suggestion = data.suggestions?.[0];
 
       if (suggestion?.content) {
-        // Auto-insert the suggestion
-        handleMaskInsert(suggestion.content, selectedMask.id);
-        showNotification(`${selectedMask.name}: inserted`);
+        // Insert the suggestion at the appropriate line
+        handleMaskInsert(suggestion.content, selectedMask.id, cursorLine, fromSlashCommand);
       }
     } catch (err) {
       showNotification("Generation failed");
       console.error(err);
     } finally {
       setIsGenerating(false);
+      setGeneratingAtLine(null);
     }
   }, [isGenerating, currentSongId, selectedMask, content, showNotification]);
 
   // Handle inline commands (e.g., /complete, /next)
-  const handleInlineCommand = useCallback((command: string): boolean => {
+  const handleInlineCommand = useCallback((command: string, lineIndex: number): boolean => {
     const cmd = command.toLowerCase().trim();
     const modeMap: Record<string, MaskMode> = {
       '/complete': 'complete',
@@ -138,7 +142,8 @@ export default function Home() {
     };
 
     if (modeMap[cmd]) {
-      generateAndInsert(modeMap[cmd]);
+      // Pass true to indicate this came from a slash command
+      generateAndInsert(modeMap[cmd], true);
       return true; // Command was handled
     }
     return false;
@@ -214,18 +219,38 @@ export default function Home() {
   }, []);
 
   const handleMaskInsert = useCallback(
-    (text: string, maskId: string) => {
+    (text: string, maskId: string, atLine?: number, fromSlashCommand = false) => {
       if (!currentSongId || !localChronicle) return;
 
-      const lastLine = content.length - 1;
-      const lastChar = content[lastLine]?.length || 0;
+      const targetLine = atLine ?? content.length - 1;
+      const lineContent = content[targetLine] || "";
 
-      localChronicle.insertFromMask(
-        { line: lastLine, character: lastChar },
-        (lastChar > 0 ? "\n" : "") + text,
-        maskId,
-        0.85
-      );
+      if (fromSlashCommand) {
+        // For slash commands: the command line was cleared, insert text there
+        // The line is now empty, so just insert the text
+        localChronicle.insertFromMask(
+          { line: targetLine, character: 0 },
+          text,
+          maskId,
+          0.85
+        );
+      } else if (lineContent.length === 0) {
+        // Empty line - insert directly
+        localChronicle.insertFromMask(
+          { line: targetLine, character: 0 },
+          text,
+          maskId,
+          0.85
+        );
+      } else {
+        // Keyboard shortcut on a line with content - add newline and text
+        localChronicle.insertFromMask(
+          { line: targetLine, character: lineContent.length },
+          "\n" + text,
+          maskId,
+          0.85
+        );
+      }
 
       const newContent = localChronicle.getContent();
       updateContent(currentSongId, newContent);
@@ -418,6 +443,8 @@ export default function Home() {
               onInlineCommand={handleInlineCommand}
               chronicle={localChronicle}
               isGenerating={isGenerating}
+              generatingAtLine={generatingAtLine}
+              generatingMask={isGenerating ? selectedMask : null}
             />
           )}
 

@@ -3,23 +3,27 @@
 import { useState, useRef, useCallback, KeyboardEvent, useEffect, ChangeEvent, forwardRef, useImperativeHandle } from "react";
 import { Chronicle } from "@/lib/chronicle";
 import { analyzeRhymeScheme } from "@/lib/rhyme";
+import type { Mask } from "@/lib/masks";
 
 interface EditorProps {
   content: string[];
   onChange: (content: string[]) => void;
   onWordSelect: (word: string) => void;
-  onInlineCommand?: (command: string) => boolean;
+  onInlineCommand?: (command: string, lineIndex: number) => boolean;
   chronicle: Chronicle;
   isGenerating?: boolean;
+  generatingAtLine?: number | null;
+  generatingMask?: Mask | null;
 }
 
 export interface EditorHandle {
   focus: () => void;
   insertText: (text: string) => void;
+  getCursorLine: () => number;
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { content, onChange, onWordSelect, onInlineCommand, chronicle, isGenerating },
+  { content, onChange, onWordSelect, onInlineCommand, chronicle, isGenerating, generatingAtLine, generatingMask },
   ref
 ) {
   const [cursorLine, setCursorLine] = useState(0);
@@ -38,7 +42,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       newContent[lastIndex] = (newContent[lastIndex] || "") + text;
       onChange(newContent);
     },
-  }), [content, onChange]);
+    getCursorLine: () => cursorLine,
+  }), [content, onChange, cursorLine]);
 
   // Analyze rhyme scheme when content changes
   useEffect(() => {
@@ -52,15 +57,14 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
     const line = content[lineIndex]?.trim() || "";
     if (line.startsWith('/') && line.length > 1 && line.length < 15) {
-      // It's a potential command
-      const handled = onInlineCommand(line);
-      if (handled) {
-        // Clear the command line
-        const newContent = [...content];
-        newContent[lineIndex] = "";
-        onChange(newContent);
-        return true;
-      }
+      // Clear the command line first so generated text goes there
+      const newContent = [...content];
+      newContent[lineIndex] = "";
+      onChange(newContent);
+
+      // It's a potential command - pass lineIndex
+      const handled = onInlineCommand(line, lineIndex);
+      return handled;
     }
     return false;
   }, [content, onChange, onInlineCommand]);
@@ -243,7 +247,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
   };
 
   return (
-    <div className={`flex-1 p-6 overflow-auto ${isGenerating ? 'opacity-75' : ''}`}>
+    <div className="flex-1 p-6 overflow-auto">
       <div className="max-w-3xl mx-auto">
         {content.map((line, index) => {
           const scheme = rhymeScheme[index];
@@ -251,6 +255,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           const colors = hasRhyme ? getSchemeColors(scheme) : null;
           const lastWord = hasRhyme ? getLastWord(line) : "";
           const isCommand = isCommandLine(line);
+          const isGeneratingHere = generatingAtLine === index;
 
           return (
           <div
@@ -262,51 +267,63 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
             {/* Line number and rhyme indicator */}
             <div className="editor-line-number pt-2 flex items-center gap-1.5 select-none min-w-[52px]">
               <span className="w-5 text-right">{index + 1}</span>
-              {hasRhyme && (
+              {hasRhyme && !isGeneratingHere && (
                 <span className={`text-xs font-bold w-4 ${colors?.text}`}>
                   {scheme}
                 </span>
               )}
+              {isGeneratingHere && (
+                <span
+                  className="w-4 h-4 rounded-full animate-pulse"
+                  style={{ backgroundColor: generatingMask?.color || '#8b5cf6' }}
+                />
+              )}
             </div>
 
-            {/* Line content */}
-            <textarea
-              ref={(el) => {
-                inputRefs.current[index] = el;
-              }}
-              value={line}
-              onChange={(e) => handleChange(index, e)}
-              onKeyDown={(e) => handleKeyDown(e, index)}
-              onSelect={handleSelect}
-              onFocus={() => handleFocus(index)}
-              onDoubleClick={handleDoubleClick}
-              placeholder={index === 0 && !line ? "Start writing... (try /complete or ⌘J)" : ""}
-              rows={1}
-              disabled={isGenerating}
-              className={`editor-line flex-1 bg-transparent outline-none resize-none min-h-[28px] placeholder:text-ghost-muted/50 ${
-                isCommand ? 'text-ghost-accent font-mono text-sm' : ''
-              }`}
-              style={{
-                height: 'auto',
-                overflow: 'hidden',
-              }}
-              onInput={(e) => {
-                // Auto-resize textarea
-                const target = e.currentTarget;
-                target.style.height = 'auto';
-                target.style.height = target.scrollHeight + 'px';
-              }}
-            />
+            {/* Line content or generating indicator */}
+            {isGeneratingHere && !line ? (
+              <div className="flex-1 flex items-center gap-2 min-h-[28px] pt-1">
+                <GeneratingIndicator mask={generatingMask} />
+              </div>
+            ) : (
+              <textarea
+                ref={(el) => {
+                  inputRefs.current[index] = el;
+                }}
+                value={line}
+                onChange={(e) => handleChange(index, e)}
+                onKeyDown={(e) => handleKeyDown(e, index)}
+                onSelect={handleSelect}
+                onFocus={() => handleFocus(index)}
+                onDoubleClick={handleDoubleClick}
+                placeholder={index === 0 && !line ? "Start writing... (try /complete or ⌘J)" : ""}
+                rows={1}
+                disabled={isGenerating}
+                className={`editor-line flex-1 bg-transparent outline-none resize-none min-h-[28px] placeholder:text-ghost-muted/50 ${
+                  isCommand ? 'text-ghost-accent font-mono text-sm' : ''
+                } ${isGeneratingHere ? 'opacity-50' : ''}`}
+                style={{
+                  height: 'auto',
+                  overflow: 'hidden',
+                }}
+                onInput={(e) => {
+                  // Auto-resize textarea
+                  const target = e.currentTarget;
+                  target.style.height = 'auto';
+                  target.style.height = target.scrollHeight + 'px';
+                }}
+              />
+            )}
 
             {/* Command hint */}
-            {isCommand && (
+            {isCommand && !isGeneratingHere && (
               <div className="pt-2 text-xs text-ghost-accent opacity-60 select-none">
                 Tab ↹
               </div>
             )}
 
             {/* Rhyme word indicator */}
-            {hasRhyme && lastWord && !isCommand && (
+            {hasRhyme && lastWord && !isCommand && !isGeneratingHere && (
               <div className={`pt-2 text-xs ${colors?.text} opacity-60 select-none hidden sm:block`}>
                 {lastWord}
               </div>
@@ -333,3 +350,36 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     </div>
   );
 });
+
+// Inline generating indicator component
+function GeneratingIndicator({ mask }: { mask?: Mask | null }) {
+  const maskColor = mask?.color || '#8b5cf6';
+  const maskName = mask?.name || 'AI';
+
+  return (
+    <div className="flex items-center gap-2 animate-fade-in">
+      {/* Animated dots */}
+      <div className="flex items-center gap-1">
+        <span
+          className="w-1.5 h-1.5 rounded-full animate-bounce"
+          style={{ backgroundColor: maskColor, animationDelay: '0ms' }}
+        />
+        <span
+          className="w-1.5 h-1.5 rounded-full animate-bounce"
+          style={{ backgroundColor: maskColor, animationDelay: '150ms' }}
+        />
+        <span
+          className="w-1.5 h-1.5 rounded-full animate-bounce"
+          style={{ backgroundColor: maskColor, animationDelay: '300ms' }}
+        />
+      </div>
+      {/* Mask name */}
+      <span
+        className="text-xs font-medium opacity-75"
+        style={{ color: maskColor }}
+      >
+        {maskName} writing...
+      </span>
+    </div>
+  );
+}
